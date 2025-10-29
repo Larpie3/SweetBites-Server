@@ -1,41 +1,30 @@
-import express from "express";
-import fetch from "node-fetch";
-import cors from "cors";
+import express from "express"
+import fetch from "node-fetch"
+import cors from "cors"
+import bodyParser from "body-parser"
 
-const app = express();
+const app = express()
+const PORT = process.env.PORT || 3000
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(cors())
+app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({ extended: true }))
 
-app.get("/", (req, res) => {
-  res.send("✅ SweetBites Proxy is running!");
-});
+app.post("/submit", async (req, res) => {
+  const scriptUrl = "https://script.google.com/macros/s/AKfycbx49nzX0ZPJHfx_kD7tOnL3hqkx3J9HBGxSoMhGl7wRGs7_P3Hf9vSGO7T8CcWhZGgP/exec"
 
-app.post("/", async (req, res) => {
   try {
-    console.log("📩 Received form data:", req.body);
-
-    const response = await fetch("https://api.web3forms.com/submit", {
+    const response = await fetch(scriptUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(req.body),
-    });
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body)
+    })
 
-    const data = await response.json();
-    console.log("✅ Response from Web3Forms:", data);
-
-    res.status(response.status).json(data);
-  } catch (error) {
-    console.error("❌ Proxy error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Proxy failed. Check Render logs for details.",
-    });
+    const data = await response.text()
+    res.status(200).send({ success: true, message: "Form forwarded successfully", data })
+  } catch (err) {
+    res.status(500).send({ success: false, message: "Error forwarding form", error: err.message })
   }
-});
+})
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Proxy server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Proxy server running on port ${PORT}`))
