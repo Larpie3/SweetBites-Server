@@ -1,48 +1,80 @@
-import express from 'express';
-import cors from 'cors';
-import fetch from 'node-fetch';
+(function() {
+  const form = document.getElementById('contactForm');
+  const status = document.getElementById('formStatus');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.get('/', (req, res) => {
-  res.send('SweetBites Proxy Server is running.');
-});
-
-app.post('/submit', async (req, res) => {
-  const { name, email, phone, orderType, message } = req.body;
-
-  if (!name || !email || !phone || !orderType || !message) {
-    return res.status(400).json({ error: 'Missing required fields' });
+  function showStatus(msg, color = 'crimson') {
+    if (!status) return alert(msg);
+    status.style.color = color;
+    status.textContent = msg;
   }
 
-  try {
-    const GAS_URL = 'https://script.google.com/macros/s/YOUR_GAS_DEPLOY_ID/exec';
-    const response = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, phone, orderType, message })
-    });
+  function isLocalPhoneValid(v) {
+    if (!v) return false;
+    const digits = v.replace(/\D/g, '');
+    return /^[9]\d{9}$/.test(digits);
+  }
 
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('GAS error:', text);
-      return res.status(500).json({ error: 'Failed to send order to Google Sheet' });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const name = (form.querySelector('[name="name"]').value || '').trim();
+    const email = (form.querySelector('[name="email"]').value || '').trim();
+    const phoneRaw = (form.querySelector('[name="phone"]').value || '').trim();
+    const orderType = (form.querySelector('[name="orderType"]').value || '').trim();
+    const message = (form.querySelector('[name="message"]').value || '').trim();
+    const captcha = (form.querySelector('#captcha').value || '').trim();
+
+    if (!name || !email || !phoneRaw || !orderType || !message) {
+      showStatus('Please complete all required fields.');
+      return;
     }
 
-    return res.status(200).json({ success: true, message: 'Order forwarded to Google Sheet' });
+    if (!isLocalPhoneValid(phoneRaw)) {
+      showStatus('Phone must be 10 digits and start with 9 (e.g., 9123456789).');
+      return;
+    }
 
-  } catch (err) {
-    console.error('Proxy server error:', err);
-    return res.status(500).json({ error: 'Server error sending order' });
-  }
-});
+    if (captcha.toUpperCase() !== 'SWEET') {
+      showStatus('Captcha word is incorrect.');
+      return;
+    }
 
-app.listen(PORT, () => {
-  console.log(`Proxy server running on port ${PORT}`);
-});
+    const fullPhone = '+63' + phoneRaw.replace(/\D/g, '');
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('email', email);
+    formData.append('phone', fullPhone);
+    formData.append('orderType', orderType);
+    formData.append('message', message);
+    formData.append('access_key', form.querySelector('[name="access_key"]').value);
 
+    showStatus('Sending your order...', 'blue');
+
+    try {
+      // Send to Web3Forms
+      const web3Response = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        body: formData
+      });
+      if (!web3Response.ok) throw new Error('Failed to send order to Web3Forms');
+
+      // Send to Proxy/Google Sheet
+      const proxyResponse = await fetch('https://sweetbites-server.onrender.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, phone: fullPhone, orderType, message })
+      });
+      if (!proxyResponse.ok) throw new Error('Failed to send order to backup Google Sheet');
+
+      showStatus('Order sent successfully!', 'green');
+      form.reset();
+      setTimeout(() => {
+        window.location.href = 'thanks.html';
+      }, 1500);
+
+    } catch (err) {
+      console.error(err);
+      showStatus('⚠️ There was an error sending your order. Please try again.');
+    }
+  });
+})();
