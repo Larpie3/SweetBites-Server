@@ -33,55 +33,53 @@ app.get('/', (req, res) => {
           background: rgba(0,0,0,0.2);
           border-radius: 15px;
           box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-          animation: fadeIn 1.5s ease-in-out;
         }
-        h1 {
-          font-size: 2.5rem;
-          margin-bottom: 1rem;
-        }
-        p {
-          font-size: 1.2rem;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
+        h1 { font-size: 2rem; margin: 0 0 .5rem 0; }
+        p { margin: 0; }
       </style>
     </head>
     <body>
       <div class="container">
         <h1>SweetBites Proxy Server</h1>
-        <p>All systems operational 🍰</p>
+        <p>Proxy for Web3Forms — ready</p>
       </div>
     </body>
     </html>
   `);
 });
 
-
 app.post('/submit', async (req, res) => {
   try {
-    const { name, email, phone, orderType, message } = req.body;
-    if (!name || !email || !phone || !orderType || !message) {
+    const payload = req.body;
+    const { name, email, phone, orderType, message, access_key } = payload;
+
+    if (!name || !email || !phone || !orderType || !message || !access_key) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
-    // Replace this with your Google Apps Script Web App URL
-    const GAS_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+    const params = new URLSearchParams();
+    params.append('access_key', access_key);
+    params.append('name', name);
+    params.append('email', email);
+    params.append('phone', phone);
+    params.append('orderType', orderType);
+    params.append('message', message);
 
-    const gasResponse = await fetch(GAS_URL, {
+    const web3res = await fetch('https://api.web3forms.com/submit', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, phone, orderType, message })
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params
     });
 
-    const gasData = await gasResponse.text(); // GAS usually returns plain text
+    const text = await web3res.text();
+    if (!web3res.ok) {
+      return res.status(502).json({ success: false, message: 'Web3Forms error', web3Status: web3res.status, web3Response: text });
+    }
 
-    res.status(200).json({ success: true, message: 'Order sent to Google Sheet', gasData });
-
+    return res.status(200).json({ success: true, message: 'Submitted to Web3Forms', web3Response: text });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Proxy error', err);
+    return res.status(500).json({ success: false, message: 'Proxy server error' });
   }
 });
 
