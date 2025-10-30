@@ -1,6 +1,8 @@
-import express from 'express';
-import cors from 'cors';
-import fetch from 'node-fetch';
+import express from "express";
+import cors from "cors";
+import fetch from "node-fetch";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -8,7 +10,20 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyCkxYnwFBOTO_vz6bkJJWM1tSatq4H6yeY",
+  authDomain: "sweetbites-admin-console.firebaseapp.com",
+  projectId: "sweetbites-admin-console",
+  storageBucket: "sweetbites-admin-console.firebasestorage.app",
+  messagingSenderId: "125142981711",
+  appId: "1:125142981711:web:7ad785732b705597069e3a"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+
+app.get("/", (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html lang="en">
@@ -41,48 +56,67 @@ app.get('/', (req, res) => {
     <body>
       <div class="container">
         <h1>SweetBites Proxy Server</h1>
-        <p>Proxy for Web3Forms — ready</p>
+        <p>Connected to Web3Forms + Firebase Brought to by: Ralph Castanares</p>
       </div>
     </body>
     </html>
   `);
 });
 
-app.post('/submit', async (req, res) => {
+// Main submit route
+app.post("/submit", async (req, res) => {
   try {
-    const payload = req.body;
-    const { name, email, phone, orderType, message, access_key } = payload;
+    const { name, email, phone, orderType, message, access_key, address } = req.body;
 
-    if (!name || !email || !phone || !orderType || !message || !access_key) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    if (!name || !email || !phone || !orderType || !message) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
+    // Send to Web3Forms
     const params = new URLSearchParams();
-    params.append('access_key', access_key);
-    params.append('name', name);
-    params.append('email', email);
-    params.append('phone', phone);
-    params.append('orderType', orderType);
-    params.append('message', message);
+    params.append("access_key", access_key || "f4a0d85e-a43d-4074-8220-5c4c74d09726");
+    params.append("name", name);
+    params.append("email", email);
+    params.append("phone", phone);
+    params.append("orderType", orderType);
+    params.append("message", message);
+    if (address) params.append("address", address);
 
-    const web3res = await fetch('https://api.web3forms.com/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    const web3res = await fetch("https://api.web3forms.com/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params
     });
 
-    const text = await web3res.text();
+    const web3Text = await web3res.text();
     if (!web3res.ok) {
-      return res.status(502).json({ success: false, message: 'Web3Forms error', web3Status: web3res.status, web3Response: text });
+      return res.status(502).json({ success: false, message: "Web3Forms error", web3Response: web3Text });
     }
 
-    return res.status(200).json({ success: true, message: 'Submitted to Web3Forms', web3Response: text });
+    // Save to Firebase
+    const docRef = await addDoc(collection(db, "orders"), {
+      name,
+      email,
+      phone,
+      orderType,
+      message,
+      address: address || "",
+      status: "Pending",
+      createdAt: serverTimestamp()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Order submitted successfully!",
+      firebaseId: docRef.id,
+      web3Response: web3Text
+    });
   } catch (err) {
-    console.error('Proxy error', err);
-    return res.status(500).json({ success: false, message: 'Proxy server error' });
+    console.error("Proxy error", err);
+    res.status(500).json({ success: false, message: "Proxy server error" });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Proxy server running on port ${PORT}`);
+  console.log(`SweetBites Proxy running on port ${PORT}`);
 });
